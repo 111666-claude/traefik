@@ -86,10 +86,14 @@ func hostV2(tree *matchersTree, hosts ...string) error {
 			return fmt.Errorf("invalid value for \"Host\" matcher, %q is not a valid hostname", host)
 		}
 
-		hosts[i] = strings.ToLower(host)
+		hosts[i] = strings.TrimSuffix(strings.ToLower(host), ".")
 	}
 
 	tree.matcher = func(req *http.Request) bool {
+		if !requestdecorator.IsHostValid(req.Context()) {
+			return false
+		}
+
 		reqHost := requestdecorator.GetCanonicalHost(req.Context())
 		if len(reqHost) == 0 {
 			// If the request is an HTTP/1.0 request, then a Host may not be defined.
@@ -114,22 +118,6 @@ func hostV2(tree *matchersTree, hosts ...string) error {
 		for _, host := range hosts {
 			if reqHost == host {
 				return true
-			}
-
-			// Check for match on trailing period on host
-			if last := len(host) - 1; last >= 0 && host[last] == '.' {
-				h := host[:last]
-				if reqHost == h {
-					return true
-				}
-			}
-
-			// Check for match on trailing period on request
-			if last := len(reqHost) - 1; last >= 0 && reqHost[last] == '.' {
-				h := reqHost[:last]
-				if h == host {
-					return true
-				}
 			}
 		}
 		return false

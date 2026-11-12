@@ -11,29 +11,67 @@ import (
 
 func TestRequestHost(t *testing.T) {
 	testCases := []struct {
-		desc     string
-		url      string
-		expected string
+		desc        string
+		url         string
+		rawHost     string
+		expected    string
+		expectValid bool
 	}{
 		{
-			desc:     "host without :",
-			url:      "http://host",
-			expected: "host",
+			desc:        "host without port",
+			url:         "http://host",
+			expected:    "host",
+			expectValid: true,
 		},
 		{
-			desc:     "host with : and without port",
-			url:      "http://host:",
-			expected: "host",
+			desc:        "host with empty port",
+			url:         "http://host:",
+			expected:    "host",
+			expectValid: true,
 		},
 		{
-			desc:     "IP host with : and with port",
-			url:      "http://127.0.0.1:123",
-			expected: "127.0.0.1",
+			desc:        "IP host with port",
+			url:         "http://127.0.0.1:123",
+			expected:    "127.0.0.1",
+			expectValid: true,
 		},
 		{
-			desc:     "IP host with : and without port",
-			url:      "http://127.0.0.1:",
-			expected: "127.0.0.1",
+			desc:        "IP host with empty port",
+			url:         "http://127.0.0.1:",
+			expected:    "127.0.0.1",
+			expectValid: true,
+		},
+		{
+			desc:        "uppercase is normalized",
+			url:         "http://EXAMPLE.COM",
+			expected:    "example.com",
+			expectValid: true,
+		},
+		{
+			desc:        "trailing dot is removed",
+			url:         "http://example.com.",
+			expected:    "example.com",
+			expectValid: true,
+		},
+		{
+			desc:        "bracketed IPv6 with port",
+			url:         "http://[fe80::1]:123",
+			expected:    "fe80::1",
+			expectValid: true,
+		},
+		{
+			desc:        "control character makes the host invalid",
+			url:         "http://example.com",
+			rawHost:     "evil\r.com",
+			expected:    "",
+			expectValid: false,
+		},
+		{
+			desc:        "malformed authority makes the host invalid",
+			url:         "http://example.com",
+			rawHost:     "example.com:notaport",
+			expected:    "",
+			expectValid: false,
 		},
 	}
 
@@ -42,13 +80,16 @@ func TestRequestHost(t *testing.T) {
 			t.Parallel()
 
 			next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-				host := GetCanonicalHost(r.Context())
-				assert.Equal(t, test.expected, host)
+				assert.Equal(t, test.expected, GetCanonicalHost(r.Context()))
+				assert.Equal(t, test.expectValid, IsHostValid(r.Context()))
 			})
 
 			rh := New(nil)
 
 			req := testhelpers.MustNewRequest(http.MethodGet, test.url, nil)
+			if test.rawHost != "" {
+				req.Host = test.rawHost
+			}
 
 			rh.ServeHTTP(nil, req, next)
 		})
@@ -98,85 +139,6 @@ func TestRequestFlattening(t *testing.T) {
 			req := testhelpers.MustNewRequest(http.MethodGet, test.url, nil)
 
 			rh.ServeHTTP(nil, req, next)
-		})
-	}
-}
-
-func Test_parseHost(t *testing.T) {
-	testCases := []struct {
-		desc     string
-		host     string
-		expected string
-	}{
-		{
-			desc:     "host without :",
-			host:     "host",
-			expected: "host",
-		},
-		{
-			desc:     "host with : and without port",
-			host:     "host:",
-			expected: "host",
-		},
-		{
-			desc:     "IP host with : and with port",
-			host:     "127.0.0.1:123",
-			expected: "127.0.0.1",
-		},
-		{
-			desc:     "IP host with : and without port",
-			host:     "127.0.0.1:",
-			expected: "127.0.0.1",
-		},
-		{
-			desc:     "host with : and without port",
-			host:     "fe80::215:5dff:fe20:cd6a",
-			expected: "fe80::215:5dff:fe20:cd6a",
-		},
-		{
-			desc:     "IPv6 host with : and with port",
-			host:     "[fe80::215:5dff:fe20:cd6a]:123",
-			expected: "fe80::215:5dff:fe20:cd6a",
-		},
-		{
-			desc:     "IPv6 host with : and without port",
-			host:     "[fe80::215:5dff:fe20:cd6a]:",
-			expected: "fe80::215:5dff:fe20:cd6a",
-		},
-		{
-			desc:     "IPv6 host without : and without port",
-			host:     "[fe80::215:5dff:fe20:cd6a]",
-			expected: "fe80::215:5dff:fe20:cd6a",
-		},
-		{
-			desc:     "invalid IPv6: missing [",
-			host:     "fe80::215:5dff:fe20:cd6a]",
-			expected: "fe80::215:5dff:fe20:cd6a]",
-		},
-		{
-			desc:     "invalid IPv6: missing ]",
-			host:     "[fe80::215:5dff:fe20:cd6a",
-			expected: "[fe80::215:5dff:fe20:cd6a",
-		},
-		{
-			desc:     "empty address",
-			host:     "",
-			expected: "",
-		},
-		{
-			desc:     "only :",
-			host:     ":",
-			expected: "",
-		},
-	}
-
-	for _, test := range testCases {
-		t.Run(test.desc, func(t *testing.T) {
-			t.Parallel()
-
-			actual := parseHost(test.host)
-
-			assert.Equal(t, test.expected, actual)
 		})
 	}
 }

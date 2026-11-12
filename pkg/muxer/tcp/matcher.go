@@ -79,7 +79,9 @@ func hostSNI(tree *matchersTree, hosts ...string) error {
 		return fmt.Errorf("invalid value for HostSNI matcher, %q is not a valid hostname", hostExpr)
 	}
 
-	hostExpr = strings.TrimSuffix(hostExpr, ".")
+	// NewConnData normalizes the server name (lower case, no trailing dot),
+	// so the expression is canonicalized the same way before matching.
+	hostExpr = strings.ToLower(strings.TrimSuffix(hostExpr, "."))
 
 	tree.matcher = func(meta ConnData) bool {
 		if meta.serverName == "" {

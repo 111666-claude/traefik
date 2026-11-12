@@ -7,6 +7,7 @@ import (
 	"github.com/go-acme/lego/v5/challenge/tlsalpn01"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	hostpkg "github.com/traefik/traefik/v3/pkg/host"
 	"github.com/traefik/traefik/v3/pkg/tcp"
 )
 
@@ -671,14 +672,16 @@ func Test_HostSNIV2(t *testing.T) {
 			buildErr:  true,
 		},
 		{
-			desc:       "Not Matching host with trailing dot with ",
+			desc:       "Matching host with trailing dot on both sides",
 			ruleHosts:  []string{"foobar."},
 			serverName: "foobar.",
+			matchErr:   false,
 		},
 		{
 			desc:       "Matching host with trailing dot",
 			ruleHosts:  []string{"foobar."},
 			serverName: "foobar",
+			matchErr:   false,
 		},
 		{
 			desc:       "Matching hosts",
@@ -719,8 +722,16 @@ func Test_HostSNIV2(t *testing.T) {
 			}
 			require.NoError(t, err)
 
+			// NewConnData canonicalizes the SNI server name before routing,
+			// mirror it here so the matcher sees the same input as in production.
+			var normalizedServerName string
+			if test.serverName != "" {
+				var err error
+				normalizedServerName, err = hostpkg.Normalize(test.serverName)
+				require.NoError(t, err)
+			}
 			meta := ConnData{
-				serverName: test.serverName,
+				serverName: normalizedServerName,
 			}
 
 			assert.Equal(t, test.matchErr, !matcherTree.match(meta))

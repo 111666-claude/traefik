@@ -347,6 +347,58 @@ func TestServeHTTP(t *testing.T) {
 			},
 		},
 		{
+			desc:       "trusted peer X-Forwarded-Host is preserved",
+			insecure:   false,
+			trustedIps: []string{"10.0.1.100"},
+			remoteAddr: "10.0.1.100:80",
+			host:       "public.example.com",
+			incomingHeaders: map[string][]string{
+				XForwardedHost: {"internal.example.com:8443"},
+			},
+			expectedHeaders: map[string]string{
+				XForwardedHost: "internal.example.com:8443",
+			},
+		},
+		{
+			desc:       "untrusted peer X-Forwarded-Host is stripped and rebuilt from req host",
+			insecure:   false,
+			trustedIps: []string{"10.0.1.100"},
+			remoteAddr: "10.0.1.101:80",
+			host:       "public.example.com",
+			incomingHeaders: map[string][]string{
+				XForwardedHost: {"evil.example.com"},
+			},
+			expectedHeaders: map[string]string{
+				XForwardedHost: "public.example.com",
+			},
+		},
+		{
+			desc:       "trusted peer invalid X-Forwarded-Host with control character is dropped",
+			insecure:   false,
+			trustedIps: []string{"10.0.1.100"},
+			remoteAddr: "10.0.1.100:80",
+			host:       "public.example.com",
+			incomingHeaders: map[string][]string{
+				XForwardedHost: {"evil\r.example.com"},
+			},
+			expectedHeaders: map[string]string{
+				XForwardedHost: "public.example.com",
+			},
+		},
+		{
+			desc:       "trusted peer invalid X-Forwarded-Host with broken port is dropped",
+			insecure:   false,
+			trustedIps: []string{"10.0.1.100"},
+			remoteAddr: "10.0.1.100:80",
+			host:       "public.example.com",
+			incomingHeaders: map[string][]string{
+				XForwardedHost: {"evil.example.com:99999"},
+			},
+			expectedHeaders: map[string]string{
+				XForwardedHost: "public.example.com",
+			},
+		},
+		{
 			desc: "xForwardedServer from req XForwarded",
 			host: "foo.com:8080",
 			expectedHeaders: map[string]string{

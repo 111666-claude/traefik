@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+	"github.com/traefik/traefik/v3/pkg/host"
 	"github.com/traefik/traefik/v3/pkg/muxer"
 	"github.com/traefik/traefik/v3/pkg/rules"
 	"github.com/traefik/traefik/v3/pkg/tcp"
-	"github.com/traefik/traefik/v3/pkg/types"
 	"github.com/vulcand/predicate"
 )
 
@@ -29,11 +29,18 @@ func NewConnData(serverName string, remoteAddr net.Addr, alpnProtos []string) (C
 		return ConnData{}, fmt.Errorf("parsing remote address %q: %w", remoteAddr.String(), err)
 	}
 
+	// As per https://datatracker.ietf.org/doc/html/rfc6066:
+	// > The hostname is represented as a byte string using ASCII encoding without a trailing dot.
+	// A server name that fails normalization (control characters, malformed value) is dropped,
+	// so that it cannot match a named HostSNI rule and only the HostSNI(`*`) catch-all can apply.
+	normalizedServerName, err := host.Normalize(serverName)
+	if err != nil {
+		log.Debug().Err(err).Msgf("Dropping invalid TLS server name %q", serverName)
+		normalizedServerName = ""
+	}
+
 	return ConnData{
-		// As per https://datatracker.ietf.org/doc/html/rfc6066:
-		// > The hostname is represented as a byte string using ASCII encoding without a trailing dot.
-		// so there is no need to trim a potential trailing dot
-		serverName: types.CanonicalDomain(serverName),
+		serverName: normalizedServerName,
 		remoteIP:   remoteIP,
 		alpnProtos: alpnProtos,
 	}, nil

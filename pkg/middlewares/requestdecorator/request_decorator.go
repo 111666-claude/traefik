@@ -2,22 +2,24 @@ package requestdecorator
 
 import (
 	"context"
-	"net"
 	"net/http"
-	"strings"
 
 	"github.com/containous/alice"
+	"github.com/traefik/traefik/v3/pkg/host"
 	"github.com/traefik/traefik/v3/pkg/types"
 )
 
 const (
 	canonicalKey key = "canonical"
 	flattenKey   key = "flatten"
+	validKey     key = "valid"
 )
 
 type key string
 
-// RequestDecorator is the struct for the middleware that adds the CanonicalDomain of the request Host into a context for later use.
+// RequestDecorator is the struct for the middleware that normalizes the request
+// Host (lower case, no trailing dot, port or IPv6 brackets) and stores it in the
+// request context for later use by the Host matchers.
 type RequestDecorator struct {
 	hostResolver *Resolver
 }
@@ -36,32 +38,18 @@ func New(hostResolverConfig *types.HostResolverConfig) *RequestDecorator {
 }
 
 func (r *RequestDecorator) ServeHTTP(rw http.ResponseWriter, req *http.Request, next http.HandlerFunc) {
-	host := types.CanonicalDomain(parseHost(req.Host))
-	reqt := req.WithContext(context.WithValue(req.Context(), canonicalKey, host))
+	normalized, err := host.Normalize(req.Host)
 
-	if r.hostResolver != nil && r.hostResolver.CnameFlattening {
-		flatHost := r.hostResolver.CNAMEFlatten(reqt.Context(), host)
+	ctx := context.WithValue(req.Context(), canonicalKey, normalized)
+	ctx = context.WithValue(ctx, validKey, err == nil)
+	reqt := req.WithContext(ctx)
+
+	if r.hostResolver != nil && r.hostResolver.CnameFlattening && err == nil {
+		flatHost := r.hostResolver.CNAMEFlatten(reqt.Context(), normalized)
 		reqt = reqt.WithContext(context.WithValue(reqt.Context(), flattenKey, flatHost))
 	}
 
 	next(rw, reqt)
-}
-
-func parseHost(addr string) string {
-	if !strings.Contains(addr, ":") {
-		// IPv4 without port or empty address
-		return addr
-	}
-
-	// IPv4 with port or IPv6
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		if addr[0] == '[' && addr[len(addr)-1] == ']' {
-			return addr[1 : len(addr)-1]
-		}
-		return addr
-	}
-	return host
 }
 
 // GetCanonicalHost retrieves the canonical host from the given context (previously stored in the request context by the middleware).
@@ -71,6 +59,17 @@ func GetCanonicalHost(ctx context.Context) string {
 	}
 
 	return ""
+}
+
+// IsHostValid reports whether the request Host header normalized successfully.
+// A false value means the authority contains control characters or is otherwise
+// malformed, so the request must not be routed on its host.
+func IsHostValid(ctx context.Context) bool {
+	if val, ok := ctx.Value(validKey).(bool); ok {
+		return val
+	}
+
+	return false
 }
 
 // GetCNAMEFlatten return the flat name if it is present in the context.

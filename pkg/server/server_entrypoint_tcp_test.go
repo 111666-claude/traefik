@@ -498,6 +498,68 @@ func Test_denyConnect(t *testing.T) {
 	}
 }
 
+func Test_denyInvalidHost(t *testing.T) {
+	tests := []struct {
+		name       string
+		host       string
+		wantStatus int
+	}{
+		{
+			name:       "Allows a simple host",
+			host:       "example.com",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "Allows a host with a port",
+			host:       "example.com:8080",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "Allows a bracketed IPv6 host",
+			host:       "[2001:db8::1]:443",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "Allows an empty host (HTTP/1.0)",
+			host:       "",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "Rejects control characters",
+			host:       "evil\r.example.com",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "Rejects an out-of-range port",
+			host:       "example.com:99999",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "Rejects a malformed bracketed IPv6 host",
+			host:       "[fe80::1",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			handler := denyInvalidHost(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest(http.MethodGet, "http://example.com", nil)
+			req.Host = test.host
+			res := httptest.NewRecorder()
+
+			handler.ServeHTTP(res, req)
+
+			assert.Equal(t, test.wantStatus, res.Code)
+		})
+	}
+}
+
 func Test_denyFragment(t *testing.T) {
 	tests := []struct {
 		name       string

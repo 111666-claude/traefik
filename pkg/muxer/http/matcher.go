@@ -92,8 +92,13 @@ func host(tree *matchersTree, hosts ...string) error {
 	}
 
 	hostExpr = strings.ToLower(hostExpr)
+	hostExpr = strings.TrimSuffix(hostExpr, ".")
 
 	tree.matcher = func(req *http.Request) bool {
+		if !requestdecorator.IsHostValid(req.Context()) {
+			return false
+		}
+
 		reqHost := requestdecorator.GetCanonicalHost(req.Context())
 		if len(reqHost) == 0 {
 			return false
@@ -106,22 +111,6 @@ func host(tree *matchersTree, hosts ...string) error {
 		flatH := requestdecorator.GetCNAMEFlatten(req.Context())
 		if len(flatH) > 0 {
 			return muxer.DomainMatchHostExpression(flatH, hostExpr)
-		}
-
-		// Check for match on trailing period on host
-		if last := len(hostExpr) - 1; last >= 0 && hostExpr[last] == '.' {
-			h := hostExpr[:last]
-			if muxer.DomainMatchHostExpression(reqHost, h) {
-				return true
-			}
-		}
-
-		// Check for match on trailing period on request
-		if last := len(reqHost) - 1; last >= 0 && reqHost[last] == '.' {
-			h := reqHost[:last]
-			if muxer.DomainMatchHostExpression(h, hostExpr) {
-				return true
-			}
 		}
 
 		return false
@@ -143,6 +132,10 @@ func hostRegexp(tree *matchersTree, hosts ...string) error {
 	}
 
 	tree.matcher = func(req *http.Request) bool {
+		if !requestdecorator.IsHostValid(req.Context()) {
+			return false
+		}
+
 		return re.MatchString(requestdecorator.GetCanonicalHost(req.Context())) ||
 			re.MatchString(requestdecorator.GetCNAMEFlatten(req.Context()))
 	}

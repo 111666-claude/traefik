@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/rs/zerolog/log"
+	"github.com/traefik/traefik/v3/pkg/host"
 	"github.com/traefik/traefik/v3/pkg/ip"
 	"github.com/traefik/traefik/v3/pkg/proxy/httputil"
 	"golang.org/x/net/http/httpguts"
@@ -180,6 +182,18 @@ func (x *XForwarded) rewrite(outreq *http.Request) {
 		scheme := unsafeHeader(outreq.Header).Get(XForwardedProto)
 		unsafeHeader(outreq.Header).Set(xForwardedScheme, scheme)
 		unsafeHeader(outreq.Header).Set(xScheme, scheme)
+	}
+
+	if xfHost := unsafeHeader(outreq.Header).Get(XForwardedHost); xfHost != "" {
+		// A surviving X-Forwarded-Host can only come from a trusted peer
+		// (untrusted values were stripped above). Validate it anyway: a
+		// compromised or misconfigured proxy must not be able to smuggle a
+		// malformed authority (control characters, broken port or IPv6
+		// notation) into the services behind Traefik.
+		if _, err := host.Normalize(xfHost); err != nil {
+			log.Ctx(outreq.Context()).Warn().Err(err).Msgf("Dropping invalid X-Forwarded-Host header value %q", xfHost)
+			unsafeHeader(outreq.Header).Del(XForwardedHost)
+		}
 	}
 
 	if xfHost := unsafeHeader(outreq.Header).Get(XForwardedHost); xfHost == "" && outreq.Host != "" {

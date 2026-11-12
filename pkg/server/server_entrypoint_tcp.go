@@ -23,6 +23,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/traefik/v3/pkg/config/static"
+	"github.com/traefik/traefik/v3/pkg/host"
 	"github.com/traefik/traefik/v3/pkg/ip"
 	"github.com/traefik/traefik/v3/pkg/middlewares"
 	"github.com/traefik/traefik/v3/pkg/middlewares/contenttype"
@@ -702,6 +703,8 @@ func newHTTPServer(ctx context.Context, ln net.Listener, configuration *static.E
 
 	handler = denyConnect(handler)
 
+	handler = denyInvalidHost(handler)
+
 	switch configuration.HTTP.AliasHeadersStrategy {
 	case "":
 		// The aliasHeadersStrategy option is not configured, fall back on the deprecated underscoreHeadersStrategy option.
@@ -902,6 +905,24 @@ func denyConnect(h http.Handler) http.Handler {
 			rw.WriteHeader(http.StatusNotImplemented)
 
 			return
+		}
+
+		h.ServeHTTP(rw, req)
+	})
+}
+
+// denyInvalidHost rejects requests whose Host authority cannot be normalized:
+// control characters, a malformed port or a broken IPv6 notation must not reach
+// the muxer, where a syntactically different host could otherwise be steered
+// onto another router. An empty Host is allowed for HTTP/1.0 requests.
+func denyInvalidHost(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.Host != "" {
+			if _, err := host.Normalize(req.Host); err != nil {
+				log.Debug().Err(err).Msgf("Rejecting request with invalid Host header: %q", req.Host)
+				http.Error(rw, "Bad Request", http.StatusBadRequest)
+				return
+			}
 		}
 
 		h.ServeHTTP(rw, req)

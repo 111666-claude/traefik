@@ -376,6 +376,19 @@ Here is the list of the encoded characters that are allowed by default:
 
 You can configure Traefik to trust the forwarded headers information (`X-Forwarded-*`).
 
+!!! note "Routing and the `Host` header"
+
+    Traefik normalizes the request `Host` header before routing on it: the value is lower-cased,
+    its trailing dot and port are removed, and IPv6 addresses are un-bracketed.
+    Authorities containing control characters or an invalid port/IPv6 notation are rejected with a
+    `400 Bad Request` before they reach any router, so they cannot be used to bypass a `Host` rule.
+
+    The `X-Forwarded-Host` header is only honored when it comes from a trusted peer
+    (`forwardedHeaders.trustedIPs`, or `forwardedHeaders.insecure`).
+    From any other source it is stripped and rebuilt from the actual `Host` header,
+    and an unroutable value received from a trusted peer is dropped as well.
+    This keeps HTTP routing, TLS routing (`HostSNI`), redirects and WebSocket upgrades consistent.
+
 ??? info "`forwardedHeaders.trustedIPs`"
 
     Trusting Forwarded Headers from specific IPs.

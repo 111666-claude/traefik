@@ -86,7 +86,9 @@ func hostSNIV2(tree *matchersTree, hosts ...string) error {
 			return fmt.Errorf("invalid value for \"HostSNI\" matcher, %q is not a valid hostname or IP", host)
 		}
 
-		hosts[i] = strings.ToLower(host)
+		// NewConnData normalizes the server name (lower case, no trailing dot),
+		// so the expression is canonicalized the same way before matching.
+		hosts[i] = strings.ToLower(strings.TrimSuffix(host, "."))
 	}
 
 	tree.matcher = func(meta ConnData) bool {
@@ -107,12 +109,6 @@ func hostSNIV2(tree *matchersTree, hosts ...string) error {
 				return true
 			}
 
-			if host == meta.serverName {
-				return true
-			}
-
-			// trim trailing period in case of FQDN
-			host = strings.TrimSuffix(host, ".")
 			if host == meta.serverName {
 				return true
 			}

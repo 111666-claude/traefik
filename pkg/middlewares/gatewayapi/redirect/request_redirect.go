@@ -10,6 +10,7 @@ import (
 
 	"github.com/traefik/traefik/v3/pkg/config/dynamic"
 	"github.com/traefik/traefik/v3/pkg/middlewares"
+	"github.com/traefik/traefik/v3/pkg/middlewares/requestdecorator"
 )
 
 const typeName = "RequestRedirect"
@@ -80,6 +81,13 @@ func (r redirect) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	host := redirectURL.Hostname()
 	if r.hostname != nil {
 		host = *r.hostname
+	} else if r.port == nil {
+		if canonical := requestdecorator.GetCanonicalHost(req.Context()); canonical != "" && requestdecorator.IsHostValid(req.Context()) {
+			// Build the Location header from the same canonical authority as the
+			// router decision (lower case, no trailing dot, no port or IPv6
+			// brackets). Fall back to the raw host when the decorator did not run.
+			host = canonical
+		}
 	}
 
 	port := redirectURL.Port()

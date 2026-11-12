@@ -7,6 +7,7 @@ import (
 
 	"github.com/traefik/traefik/v3/pkg/config/dynamic"
 	"github.com/traefik/traefik/v3/pkg/middlewares"
+	"github.com/traefik/traefik/v3/pkg/middlewares/requestdecorator"
 )
 
 const typeRegexName = "RedirectRegex"
@@ -42,6 +43,15 @@ func rawURL(req *http.Request) string {
 
 	if req.TLS != nil {
 		scheme = schemeHTTPS
+	}
+
+	// Prefer the host normalized by the request decorator so that the Location
+	// header is built from the same canonical authority as the router decision
+	// (lower case, no trailing dot, no port or IPv6 brackets). Fall back to the
+	// raw host when the decorator did not run, e.g. in standalone unit tests.
+	if canonical := requestdecorator.GetCanonicalHost(req.Context()); canonical != "" && requestdecorator.IsHostValid(req.Context()) {
+		host = canonical
+		port = ""
 	}
 
 	return strings.Join([]string{scheme, "://", host, port, uri}, "")
